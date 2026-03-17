@@ -8,6 +8,7 @@ AlphaZero-style Othello AI
 # Colab 설치 (필요시 주석 해제)
 
 import copy
+import os
 import random
 import numpy as np
 import torch
@@ -17,6 +18,7 @@ import torch.optim as optim
 from torch.amp import GradScaler, autocast
 from torch.utils.data import DataLoader, TensorDataset
 from collections import deque
+import matplotlib.pyplot as plt
 import time
 
 # 전역 설정
@@ -435,9 +437,22 @@ def train(
     replay_buffer  = 15000,
     num_res_blocks = 4,
     channels       = 64,
-    save_path      = "othello_net_optimized.pth"
+    save_path      = "othello_net_optimized.pth",
+    resume_path    = None,
+    plot_path      = "loss_curve.png"
 ):
     net = OthelloNet(num_res_blocks=num_res_blocks, channels=channels).to(DEVICE)
+    if resume_path and os.path.exists(resume_path):
+        state_dict = torch.load(resume_path, map_location=DEVICE)
+
+        # torch.compile로 저장된 경우 _orig_mod. 접두사 제거
+        state_dict = {
+            k.replace("_orig_mod.", ""): v
+            for k, v in state_dict.items()
+        }
+
+        net.load_state_dict(state_dict)
+        print(f"✓ 기존 모델 로드: {resume_path}")
 
     # [최적화 7] torch.compile (PyTorch 2.0+)
     # 신경망 연산 그래프를 컴파일해 반복 실행 시 커널 실행 오버헤드 감소
@@ -452,6 +467,7 @@ def train(
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=n_iterations)
     scaler    = GradScaler(enabled=torch.cuda.is_available())   # AMP scaler
     memory    = deque(maxlen=replay_buffer)
+    history = {"loss": [], "policy_loss": [], "value_loss": []}  # ← 추가
 
     print("\n" + "=" * 60)
     print("  AlphaZero-style Othello AI")
@@ -485,12 +501,37 @@ def train(
         print(f"  Loss: {loss:.4f} (P: {p_loss:.4f} | V: {v_loss:.4f}) | "
               f"LR: {lr_now:.5f} | {elapsed:.1f}s")
 
+        history["loss"].append(loss)
+        history["policy_loss"].append(p_loss)
+        history["value_loss"].append(v_loss)
+
         if iteration % 10 == 0:
             torch.save(net.state_dict(), save_path)
             print(f"  ✓ 체크포인트 저장: {save_path}")
 
     torch.save(net.state_dict(), save_path)
     print(f"\n학습 완료. 최종 모델: {save_path}")
+
+    if history["loss"]:
+        iters = list(range(1, len(history["loss"]) + 1))
+        fig, axes = plt.subplots(1, 3, figsize=(15, 4))
+        fig.suptitle("Training History", fontsize=14)
+        for ax, key, color, title in zip(
+            axes,
+            ["loss", "policy_loss", "value_loss"],
+            ["steelblue", "tomato", "seagreen"],
+            ["Total Loss", "Policy Loss", "Value Loss"]
+        ):
+            ax.plot(iters, history[key], color=color, linewidth=2, marker="o", markersize=3)
+            ax.set_title(title)
+            ax.set_xlabel("Iteration")
+            ax.set_ylabel("Loss")
+            ax.grid(True, alpha=0.3)
+        plt.tight_layout()
+        plt.savefig(plot_path, dpi=150)
+        plt.show()
+        print(f"  ✓ 학습 곡선 저장: {plot_path}")
+    
     return net
 
 # Part 6. 평가
@@ -526,16 +567,20 @@ def evaluate(net, n_games=20, n_simul=100):
 
 if __name__ == "__main__":
     trained_net = train(
-        n_iterations    = 30,
+        n_iterations    = 20,
         n_self_play     = 20,
-        n_simul         = 150,
+        n_simul         = 300,
         batch_size      = 256,
         leaf_batch_size = 8,
         lr              = 1e-3,
         replay_buffer   = 15000,
         num_res_blocks  = 4,
         channels        = 64,
-        save_path       = "othello_net_optimized.pth"
+        save_path       = "othello_net.pth",
+        resume_path     = "othello_net_optimized.pth",
+        plot_path       = "loss_curve.png"
     )
 
     evaluate(trained_net, n_games=20, n_simul=100)
+
+
