@@ -5,8 +5,6 @@ AlphaZero-style Othello AI
 
 """
 
-# Colab 설치 (필요시 주석 해제)
-
 import copy
 import os
 import random
