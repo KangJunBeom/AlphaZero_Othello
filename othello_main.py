@@ -464,7 +464,7 @@ def train(
             print(f"torch.compile 불가 ({e}), 스킵")
 
     optimizer = optim.Adam(net.parameters(), lr=lr, weight_decay=1e-4)
-    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=n_iterations)
+    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma = 0.5)
     scaler    = GradScaler(enabled=torch.cuda.is_available())   # AMP scaler
     memory    = deque(maxlen=replay_buffer)
     history = {"loss": [], "policy_loss": [], "value_loss": []}  # ← 추가
@@ -569,15 +569,14 @@ if __name__ == "__main__":
     trained_net = train(
         n_iterations    = 20,
         n_self_play     = 20,
-        n_simul         = 300,
+        n_simul         = 400,
         batch_size      = 256,
         leaf_batch_size = 8,
         lr              = 1e-3,
-        replay_buffer   = 15000,
+        replay_buffer   = 5000,
         num_res_blocks  = 4,
         channels        = 64,
-        save_path       = "othello_net.pth",
-        resume_path     = "othello_net_optimized.pth",
+        save_path       = "othello_net2.pth",
         plot_path       = "loss_curve.png"
     )
 
